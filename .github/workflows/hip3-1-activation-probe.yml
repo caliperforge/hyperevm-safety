@@ -94,7 +94,7 @@ jobs:
 
       - name: Upload probe status (deferred path)
         if: steps.probe.outputs.active != 'true' && always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: hip3-1-probe-status
           if-no-files-found: ignore

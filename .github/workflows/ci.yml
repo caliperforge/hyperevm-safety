@@ -120,7 +120,7 @@ jobs:
 
       - name: Upload findings/ scorecards
         if: steps.gate.outputs.wired == 'true' && always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: library-clean-scorecards
           if-no-files-found: ignore
@@ -139,16 +139,28 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Detect Properties.sol wired (T-3)
+      - name: Detect Properties.sol + PR-CI echidna wiring
         id: gate
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f invariants/Properties.sol ] || [ -f test/recon/CryticTester.sol ]; then
+          # Properties.sol (T-3) is wired at HEAD, but the PR-CI echidna
+          # campaign step itself is not yet ready: `crytic/echidna-action@v2`
+          # invokes its v2.2.5 container which lacks `forge`, so
+          # `crytic-compile` cannot read this foundry project, and the action
+          # invocation is also missing the required `files` input. Rewiring
+          # this job (either install forge inside the container or run echidna
+          # via `docker run` with a `--ignore-compile` pre-built out/) is its
+          # own ticket — `T-CI-echidna` — queued upstream. Until then the
+          # short-budget campaign is exercised by the `nightly` workflow's
+          # foundry leg, not on every PR. Path-gate marker keeps the job
+          # name stable so T-CI-echidna can flip the gate atomically.
+          if [ -f .github/.echidna-pr-ci-wired ] && \
+             { [ -f invariants/Properties.sol ] || [ -f test/recon/CryticTester.sol ]; }; then
             echo "wired=true" >> "$GITHUB_OUTPUT"
           else
             echo "wired=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::T-3 Properties.sol / CryticTester not yet landed; echidna campaign deferred."
+            echo "::notice::T-CI-echidna not yet landed; PR-CI echidna campaign deferred (nightly foundry leg covers it)."
           fi
 
       - name: Foundry setup (pinned)
@@ -185,7 +197,7 @@ jobs:
 
       - name: Upload campaign output
         if: steps.gate.outputs.wired == 'true' && always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: echidna-campaign-output-ci
           if-no-files-found: ignore
