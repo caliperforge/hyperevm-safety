@@ -120,7 +120,7 @@ jobs:
 
       - name: Upload findings/ scorecards
         if: steps.gate.outputs.wired == 'true' && always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: library-clean-scorecards
           if-no-files-found: ignore
@@ -197,7 +197,7 @@ jobs:
 
       - name: Upload campaign output
         if: steps.gate.outputs.wired == 'true' && always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: echidna-campaign-output-ci
           if-no-files-found: ignore
