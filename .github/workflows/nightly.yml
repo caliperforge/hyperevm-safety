@@ -44,7 +44,7 @@ jobs:
             foundry_version: "nightly"
     continue-on-error: ${{ matrix.leg == 'latest' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -89,7 +89,7 @@ jobs:
             echidna_version: "latest"
     continue-on-error: ${{ matrix.leg == 'latest' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -161,7 +161,7 @@ jobs:
             medusa_version: "latest"
     continue-on-error: ${{ matrix.leg == 'latest' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -230,7 +230,7 @@ jobs:
             halmos_version: "latest"
     continue-on-error: ${{ matrix.leg == 'latest' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 

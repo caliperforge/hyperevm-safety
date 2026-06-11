@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -80,7 +80,7 @@ jobs:
     timeout-minutes: 20
     needs: library-build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -135,7 +135,7 @@ jobs:
     timeout-minutes: 25
     needs: library-build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -200,7 +200,7 @@ jobs:
     timeout-minutes: 20
     needs: library-build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -239,7 +239,7 @@ jobs:
     timeout-minutes: 20
     needs: library-build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -288,7 +288,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Detect both legs wired (T-5)
         id: gate
@@ -308,7 +308,14 @@ jobs:
         working-directory: incidents/01-jelly-2025-03
         run: |
           set -euo pipefail
-          n=$(diff -r clean/src planted/src 2>/dev/null | grep -E '^(diff|Only in)' | wc -l | tr -d ' ')
+          # `diff -r` exits 1 when trees differ — which is the EXPECTED case
+          # here (a planted-bug twin would not differ from clean would be a
+          # bug). Capture the output without letting pipefail nuke the step,
+          # then count the change markers.
+          set +e
+          out=$(diff -r clean/src planted/src 2>/dev/null)
+          set -e
+          n=$(printf '%s\n' "$out" | grep -cE '^(diff|Only in)' || true)
           echo "twin_diff_files=$n"
           if [ "$n" -gt 3 ]; then
             echo "::error::Twin diff is $n files; spec.md §T-5 acceptance caps at 3."

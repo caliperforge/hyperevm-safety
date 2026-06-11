@@ -27,6 +27,12 @@ remappings = [
     "@hyper-evm-lib/=lib/hyper-evm-lib/",
 ]
 
+# Do not walk lib/* to harvest nested deps' foundry.toml for remappings — our
+# remappings above are authoritative, and the walk crashes the pinned March-2024
+# foundry nightly when it hits e.g. `lib/hyper-evm-lib/lib/openzeppelin-contracts/
+# foundry.toml` which declares `evm_version = "prague"` (unknown to that build).
+auto_detect_remappings = false
+
 ffi = false
 
 gas_limit = 9223372036854775807

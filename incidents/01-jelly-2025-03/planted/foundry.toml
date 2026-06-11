@@ -42,6 +42,11 @@ remappings = [
     "hyperevm-safety/=../../../",
 ]
 
+# See parent foundry.toml: prevents the pinned March-2024 foundry nightly from
+# crashing while walking nested deps' foundry.toml in `../../../lib/` (one of
+# them, openzeppelin-contracts, declares evm_version = "prague").
+auto_detect_remappings = false
+
 ffi = false
 
 [fuzz]
