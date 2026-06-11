@@ -1,0 +1,45 @@
+# hyperevm-safety — Foundry config
+#
+# Tracks chimera-template-pack's conventions (solc 0.8.28, CI-friendly fuzz
+# budgets) so the Properties.sol bundle composes cleanly with the Recon Chimera
+# harness. Library code lives in src/; properties + Chimera scaffold live in
+# invariants/. The invariants/ directory is treated as both `src` and `test` —
+# Properties.sol must be reachable by Echidna/Medusa (which run against the
+# CryticTester contract there), and the *.t.sol files must be runnable by
+# `forge test --match-path 'invariants/*.t.sol'` per spec §T-3 acceptance.
+
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "invariants"
+script = "script"
+
+solc_version = "0.8.28"
+optimizer = true
+optimizer_runs = 200
+via_ir = false
+
+remappings = [
+    "forge-std/=lib/forge-std/src/",
+    "chimera/=lib/chimera/src/",
+    "@recon/=lib/chimera/src/",
+    "@hyper-evm-lib/=lib/hyper-evm-lib/",
+]
+
+ffi = false
+
+gas_limit = 9223372036854775807
+memory_limit = 2147483648
+
+[fuzz]
+runs = 1000
+
+[invariant]
+runs = 256
+depth = 50
+fail_on_revert = false
+call_override = false
+dictionary_weight = 80
+include_storage = true
+include_push_bytes = true

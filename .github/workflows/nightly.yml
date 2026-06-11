@@ -1,0 +1,292 @@
+name: nightly
+
+# Nightly cron matrix.
+#
+# Per spec.md §5.5: same campaign budget → same scorecard byte-for-byte. Each
+# tool has a "pinned" leg (the version we trust) and a "latest" leg (early
+# warning for upstream toolchain breaks). A latest-leg failure does NOT fail
+# the workflow — it surfaces as a `::warning::` so the maintainer sees it on
+# the next morning's nightly tab.
+#
+# The medusa job is structural at M1 (config-only per T-6); medusa CI lands in
+# T-CI-medusa under M2. The nightly entry is wired so the M2 dispatch can flip
+# the gate and start running it.
+
+on:
+  schedule:
+    # Daily at 07:00 UTC (off-peak for ubuntu-latest runners).
+    - cron: "0 7 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ECHIDNA_NIGHTLY_TIMEOUT: "1800"      # 30 min
+  ECHIDNA_NIGHTLY_TEST_LIMIT: "1000000"
+  MEDUSA_NIGHTLY_TIMEOUT: "1800"
+  HALMOS_NIGHTLY_TIMEOUT: "1800"
+
+jobs:
+  # ────────────────── Foundry ──────────────────
+  foundry:
+    name: foundry (${{ matrix.leg }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: pinned
+            foundry_version: "nightly-de33b6af53005037b463318d2628b5cfcaf39916"  # PIN: rotate intentionally
+          - leg: latest
+            foundry_version: "nightly"
+    continue-on-error: ${{ matrix.leg == 'latest' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Detect M1 wired
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find invariants -maxdepth 2 -type f -name '*.t.sol' 2>/dev/null | grep -q .; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::M1 invariants/ not yet landed; foundry nightly deferred (${{ matrix.leg }})."
+          fi
+
+      - name: Foundry setup (${{ matrix.leg }} → ${{ matrix.foundry_version }})
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+        with:
+          foundry-version: ${{ matrix.foundry_version }}
+
+      - name: forge build + invariants
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          forge build --sizes
+          forge test --match-path 'invariants/*.t.sol' -vv
+
+  # ────────────────── Echidna ──────────────────
+  echidna:
+    name: echidna (${{ matrix.leg }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: pinned
+            echidna_version: "v2.2.5"
+          - leg: latest
+            echidna_version: "latest"
+    continue-on-error: ${{ matrix.leg == 'latest' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Detect echidna target wired
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f invariants/Properties.sol ] || [ -f test/recon/CryticTester.sol ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Properties.sol / CryticTester not landed; echidna nightly deferred (${{ matrix.leg }})."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Install Echidna (${{ matrix.echidna_version }})
+        if: steps.gate.outputs.wired == 'true'
+        uses: crytic/echidna-action@v2
+        with:
+          echidna-version: ${{ matrix.echidna_version }}
+
+      - name: forge build
+        if: steps.gate.outputs.wired == 'true'
+        run: forge build
+
+      - name: Run echidna nightly campaign (long budget)
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .campaign-out
+          set +e
+          echidna . --contract CryticTester --config echidna.yaml \
+              --test-limit "${ECHIDNA_NIGHTLY_TEST_LIMIT}" \
+              --timeout "${ECHIDNA_NIGHTLY_TIMEOUT}" \
+              2>&1 | tee .campaign-out/echidna-nightly-${{ matrix.leg }}.out
+          echo "exit=$?" > .campaign-out/exit-${{ matrix.leg }}
+          set -e
+
+      - name: Upload nightly campaign artifact
+        if: steps.gate.outputs.wired == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: echidna-nightly-${{ matrix.leg }}
+          if-no-files-found: ignore
+          path: |
+            .campaign-out/echidna-nightly-${{ matrix.leg }}.out
+            .campaign-out/exit-${{ matrix.leg }}
+
+  # ────────────────── Medusa ──────────────────
+  # Config-only at M1 per T-6; real medusa job is dispatched under T-CI-medusa
+  # in M2. This entry keeps the nightly matrix shape consistent so the M2
+  # ticket only flips a gate.
+  medusa:
+    name: medusa (${{ matrix.leg }} — M2 gated)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: pinned
+            medusa_version: "v0.1.7"
+          - leg: latest
+            medusa_version: "latest"
+    continue-on-error: ${{ matrix.leg == 'latest' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Detect medusa M2 wired
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          # T-CI-medusa (M2) lands this file. Until then, log + exit clean.
+          if [ -f .github/workflows/_medusa_enabled ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::medusa CI gated until T-CI-medusa (M2) flips .github/workflows/_medusa_enabled; config-only at M1."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Install medusa (${{ matrix.medusa_version }})
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Crytic publishes a release artifact; this is the canonical install
+          # pattern. The M2 ticket will likely replace this with a dedicated
+          # action once one is stable.
+          go install github.com/crytic/medusa@${{ matrix.medusa_version }} || true
+          medusa --version || echo "::warning::medusa install failed for leg=${{ matrix.leg }}"
+
+      - name: Run medusa fuzz (long budget)
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .campaign-out
+          set +e
+          medusa fuzz --config medusa.json --timeout "${MEDUSA_NIGHTLY_TIMEOUT}" \
+              2>&1 | tee .campaign-out/medusa-nightly-${{ matrix.leg }}.out
+          echo "exit=$?" > .campaign-out/exit-medusa-${{ matrix.leg }}
+          set -e
+
+      - name: Upload nightly medusa artifact
+        if: steps.gate.outputs.wired == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medusa-nightly-${{ matrix.leg }}
+          if-no-files-found: ignore
+          path: |
+            .campaign-out/medusa-nightly-${{ matrix.leg }}.out
+            .campaign-out/exit-medusa-${{ matrix.leg }}
+
+  # ────────────────── Halmos ──────────────────
+  halmos:
+    name: halmos (${{ matrix.leg }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: pinned
+            halmos_version: "0.2.7"
+          - leg: latest
+            halmos_version: "latest"
+    continue-on-error: ${{ matrix.leg == 'latest' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Detect halmos specs wired (T-8 / M2)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          n=$(find formal/halmos -maxdepth 2 -type f -name '*.t.sol' 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$n" -gt 0 ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::T-8 formal/halmos/*.t.sol not yet landed; halmos nightly deferred (${{ matrix.leg }})."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Install Python + halmos (${{ matrix.halmos_version }})
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          if [ "${{ matrix.halmos_version }}" = "latest" ]; then
+            pip install halmos
+          else
+            pip install "halmos==${{ matrix.halmos_version }}"
+          fi
+          halmos --version
+
+      - name: forge build
+        if: steps.gate.outputs.wired == 'true'
+        run: forge build
+
+      - name: Run halmos symbolic specs
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .campaign-out
+          set +e
+          halmos --match-test 'formal/halmos/.*\\.t\\.sol' \
+              --solver-timeout-assertion "${HALMOS_NIGHTLY_TIMEOUT}000" \
+              2>&1 | tee .campaign-out/halmos-nightly-${{ matrix.leg }}.out
+          echo "exit=$?" > .campaign-out/exit-halmos-${{ matrix.leg }}
+          set -e
+
+      - name: Upload halmos artifact
+        if: steps.gate.outputs.wired == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: halmos-nightly-${{ matrix.leg }}
+          if-no-files-found: ignore
+          path: |
+            .campaign-out/halmos-nightly-${{ matrix.leg }}.out
+            .campaign-out/exit-halmos-${{ matrix.leg }}

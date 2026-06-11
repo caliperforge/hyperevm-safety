@@ -1,0 +1,48 @@
+# incidents/01-jelly-2025-03/clean — Foundry config
+#
+# Standalone Foundry sub-project: `cd incidents/01-jelly-2025-03/clean &&
+# forge build && forge test` must work in isolation (spec §T-5 acceptance).
+# CI's `incident-01-jelly-clean-passes` job (.github/workflows/ci.yml) runs
+# exactly this command.
+#
+# Library deps (forge-std, hyper-evm-lib, chimera) are shared with the parent
+# at `../../../lib/` rather than re-installed, so the incident tracks the
+# parent's pin exactly. Mirrors the `examples/minimal-lending-market/`
+# pattern from T-4 (one level deeper in the tree).
+#
+# `hyperevm-safety/=../../../` lets case code import the library as
+# `import {HyperCoreOracleGuard} from "hyperevm-safety/src/HyperCoreOracleGuard.sol"`
+# — same import line a fork-from-this-example consumer would write.
+#
+# The planted/ leg uses an IDENTICAL foundry.toml (the twin's source diff is
+# scoped to src/, never config). Keeping the configs byte-identical is what
+# lets `diff -r clean/src planted/src` give the one-localized-hunk signal the
+# CI twin-diff job asserts.
+
+# `libs` lists both the shared toolchain libraries AND the parent
+# `hyperevm-safety/` root so forge's allowed-path check (which restricts
+# imports to project + libs) permits `import "hyperevm-safety/..."` to
+# resolve into `../../../src/` and `../../../invariants/`. At incident depth
+# 3, the parent root has to be named explicitly — the `examples/`
+# sub-project at depth 2 picks it up via forge's auto-detection of the
+# nearest workspace, which doesn't extend three levels deep.
+[profile.default]
+src = "src"
+out = "out"
+test = "tests"
+libs = ["../../../lib", "../../../"]
+
+solc_version = "0.8.28"
+optimizer = true
+optimizer_runs = 200
+via_ir = false
+
+remappings = [
+    "forge-std/=../../../lib/forge-std/src/",
+    "hyperevm-safety/=../../../",
+]
+
+ffi = false
+
+[fuzz]
+runs = 256

@@ -1,0 +1,101 @@
+name: hip3-1-activation-probe
+
+# HIP-3.1 activation probe (parked-but-running).
+#
+# Per spec.md §5.3 + D1 sub-decision (HIP-3.1 parked-with-stub):
+#   - Default path: extensions/ is deferred. The probe logs "extensions/ deferred"
+#     and exits 0 — that's the M1+ steady state today.
+#   - Active path: a future activation signal flips an in-tree marker (or the
+#     check helper inside src/extensions/ returns true). At that point this
+#     workflow runs extensions/ as a real test job and the README badge flips.
+#
+# The probe is deliberately on a nightly cadence + workflow_dispatch — we don't
+# want it sweeping every PR. The cost of being late on the flip is days, not
+# minutes; the cost of false noise on every push is real.
+
+on:
+  schedule:
+    # Daily at 08:00 UTC (one hour after nightly so artifacts don't collide).
+    - cron: "0 8 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: hip3-probe-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: HIP-3.1 activation probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run activation check
+        id: probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Activation signal is one of:
+          #   (a) in-tree marker file (set manually by the maintainer once the
+          #       on-chain signal is confirmed: HIP-3.1 SetOracleConfig +
+          #       multi-sig oracleUpdaters live on mainnet);
+          #   (b) future automated helper that reads HyperCore and emits the
+          #       same marker.
+          # Both paths converge on src/extensions/.hip3_1_active. The README at
+          # src/extensions/README.md documents the flip protocol.
+          marker="src/extensions/.hip3_1_active"
+          if [ -f "$marker" ]; then
+            echo "active=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::HIP-3.1 marker present at $marker — running extensions/ tests."
+          else
+            echo "active=false" >> "$GITHUB_OUTPUT"
+            echo "extensions/ deferred — HIP-3.1 not yet confirmed active on mainnet (per spec.md §1.3, §5.3)."
+            echo "::notice::extensions/ deferred (HIP-3.1 inactive)."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.probe.outputs.active == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: forge test src/extensions
+        if: steps.probe.outputs.active == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Extensions tests live under invariants/ with an Hip3_1* prefix per
+          # the spec layout; if T-12 (or its M2/M3 successor) puts them
+          # elsewhere, this match pattern is the single point to update.
+          forge test --match-path 'invariants/Hip3_1*.t.sol' -vv
+
+      - name: Halmos check on extensions formal specs
+        if: steps.probe.outputs.active == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          n=$(find formal/halmos -maxdepth 2 -type f -name 'Hip3_1*.t.sol' 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$n" -gt 0 ]; then
+            python3 -m pip install --upgrade pip
+            pip install halmos
+            halmos --match-test 'formal/halmos/Hip3_1.*\\.t\\.sol' -vv
+          else
+            echo "::notice::No HIP-3.1 halmos specs yet; skipping symbolic leg."
+          fi
+
+      - name: Emit deferred status (default path)
+        if: steps.probe.outputs.active != 'true'
+        shell: bash
+        run: |
+          echo "extensions/ deferred"
+          echo "{\"probe\":\"hip3-1\",\"active\":false,\"reason\":\"marker not present at src/extensions/.hip3_1_active\"}" > probe-status.json
+
+      - name: Upload probe status (deferred path)
+        if: steps.probe.outputs.active != 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hip3-1-probe-status
+          if-no-files-found: ignore
+          path: probe-status.json

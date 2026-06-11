@@ -1,0 +1,88 @@
+hyperevm-safety
+Copyright 2026 CaliperForge / Michael Moffett.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this work except in compliance with the License. You may obtain
+a copy of the License at http://www.apache.org/licenses/LICENSE-2.0.
+
+This NOTICE file is provided for compliance with Section 4(d) of the
+Apache License.
+
+------------------------------------------------------------------------
+Upstream attributions
+------------------------------------------------------------------------
+
+The hyperevm-safety library is built on the following upstream work.
+Each attribution carries the pinned version it currently targets; this
+file is updated as pins move.
+
+- hyperliquid-dev/hyper-evm-lib — MIT-licensed HyperEVM-side simulator
+  of the HyperCore precompile surface (0x800–0x80B) and the CoreWriter
+  call site. Pinned at commit
+  `6abf28fca081f56c43b0f94af23699f1b43d2329` (HEAD as of 2026-04-24,
+  when the T-2 evaluation was performed). The pin lives in
+  `.github/actions/foundry-setup/action.yml`; the behaviors depended on
+  are documented in `docs/hyper-evm-lib-notes.md`.
+
+- CaliperForge chimera-template-pack — Apache-2.0 Foundry + Recon
+  Chimera + Echidna + Medusa scaffold. hyperevm-safety reuses the
+  composite action, the `Properties.sol` Recon Chimera bundle pattern,
+  the seeded fuzz configuration, and the per-PR clean/planted CI
+  discipline.
+
+- endix-foundation-v1/purrkit — MIT-licensed HyperEVM toolkit. The
+  T-2 build ticket evaluates whether any specific precompile semantic
+  is more faithfully modeled by purrkit than by hyper-evm-lib; if
+  files are cherry-picked into `src/sim/`, this NOTICE is updated to
+  name each file with its source commit hash. As of scaffold time, no
+  purrkit file has been vendored.
+
+------------------------------------------------------------------------
+Toolchain authors
+------------------------------------------------------------------------
+
+- Foundry (forge, anvil, cast) — Foundry-rs.
+- Recon Chimera — Recon.
+- Echidna — Trail of Bits.
+- Medusa — Trail of Bits.
+- Halmos — a16z crypto.
+- Certora Prover (CVL) — Certora.
+- Hyperliquid HyperCore precompile + CoreWriter documentation —
+  Hyperliquid Foundation.
+
+------------------------------------------------------------------------
+Incident post-mortem authors
+------------------------------------------------------------------------
+
+- incidents/01-jelly-2025-03 (JELLY, Mar 2025): primary and secondary
+  sources cited in `incidents/01-jelly-2025-03/README.md` § "Primary
+  sources":
+  - Hyperliquid Foundation, official X statement (2025-03-26) —
+    primary.
+  - CoinDesk, "HyperLiquid Delists JELLY After Vault Squeezed in $13M
+    Tussle" (2025-03-26).
+  - Halborn, "Explained: The Hyperliquid Hack (March 2025)" —
+    technical post-mortem.
+  - OAK Research, "Hyperliquid and the JELLY attack: Context,
+    vulnerability and team solution" — technical post-mortem.
+
+- incidents/02-xyz100-2025-12 (trade.xyz XYZ100, Dec 14 2025):
+  post-mortem citations will land in
+  `incidents/02-xyz100-2025-12/README.md` when the case lands (planned:
+  T-10 / M3). Primary source slot: trade.xyz public post-mortem.
+  Secondary source slot: Hyperliquid forum thread / independent
+  reporting.
+
+The reconstructed code in each incident's `clean/` and `planted/`
+subtrees is a same-source twin minimal to the bug class. It is NOT a
+fork of any affected protocol's production source.
+
+------------------------------------------------------------------------
+The CaliperForge harnesses this library extends
+------------------------------------------------------------------------
+
+- chimera-template-pack — the EVM Foundry + Recon Chimera scaffold
+  this library is built on top of. Apache-2.0.
+- invariant-atlas — the cross-VM exploit-to-invariant case set that
+  established the twin-discipline pattern hyperevm-safety reuses.
+  Apache-2.0.

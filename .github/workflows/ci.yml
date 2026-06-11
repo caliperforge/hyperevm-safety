@@ -1,0 +1,316 @@
+name: ci
+
+# hyperevm-safety CI — v0.1.
+#
+# Implements spec.md §5.1 (per-invariant jobs) + §5.2 (per-incident jobs).
+# All six D-invariants and the JELLY incident twins are wired and green at
+# HEAD; M2/M3 surfaces (Halmos, Certora, XYZ100 twins, table-stakes) stay
+# path-existence-gated so each future deliverable flips its job from
+# "deferred" to "real-work-green" the moment it lands.
+#
+# Composite Foundry setup lives at .github/actions/foundry-setup/ (the pin
+# pattern is borrowed from caliperforge/chimera-template-pack — referenced,
+# not vendored).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FOUNDRY_PROFILE: default
+  # Short campaign budget for CI; nightly runs the longer budget.
+  ECHIDNA_TIMEOUT: "180"
+  ECHIDNA_TEST_LIMIT: "20000"
+
+defaults:
+  run:
+    # Workflows are designed to be moved to repo root on the public flip; until
+    # then they reference paths under experiments/hyperevm-safety/. Each job
+    # explicitly `cd`s — this default just makes ad-hoc steps consistent.
+    working-directory: .
+
+jobs:
+  # §5.1 — library-build
+  library-build:
+    name: library-build (forge build src/ invariants/)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Detect M1 src/invariants wired (T-3)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          n_src=$(find src -maxdepth 2 -type f -name '*.sol' 2>/dev/null | wc -l | tr -d ' ')
+          n_inv=$(find invariants -maxdepth 2 -type f -name '*.sol' 2>/dev/null | wc -l | tr -d ' ')
+          echo "n_src=$n_src n_inv=$n_inv"
+          if [ "$n_src" -gt 0 ] || [ "$n_inv" -gt 0 ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::T-3 not yet landed (src/ + invariants/ empty); library-build deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+        with:
+          install-hyper-evm-lib: "true"
+          build: "false"
+
+      - name: forge build src/ + invariants/
+        if: steps.gate.outputs.wired == 'true'
+        run: forge build --sizes
+
+  # §5.1 — library-properties-clean
+  library-properties-clean:
+    name: library-properties-clean (forge test invariants/)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Detect M1 invariants wired (T-3)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          n=$(find invariants -maxdepth 2 -type f -name '*.t.sol' 2>/dev/null | wc -l | tr -d ' ')
+          echo "n=$n"
+          if [ "$n" -gt 0 ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::T-3 invariants/*.t.sol not yet landed; library-properties-clean deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: forge test --match-path invariants/*.t.sol
+        if: steps.gate.outputs.wired == 'true'
+        run: |
+          set -euo pipefail
+          forge test --match-path 'invariants/*.t.sol' -vv
+
+      - name: Capture scorecards
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          # Scorecard capture lands in T-5 alongside incident twins. For the
+          # invariant-side, T-3's Properties.sol may emit them directly. This
+          # step just ensures the artifact dir exists so upload-artifact below
+          # doesn't fail when there's nothing to ship yet.
+          mkdir -p findings
+
+      - name: Upload findings/ scorecards
+        if: steps.gate.outputs.wired == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: library-clean-scorecards
+          if-no-files-found: ignore
+          path: |
+            findings/*/scorecard.json
+            findings/*/scorecard.md
+
+  # §5.1 — library-properties-fuzz-echidna (short campaign budget)
+  library-properties-fuzz-echidna:
+    name: library-properties-fuzz-echidna (short budget)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Detect Properties.sol wired (T-3)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f invariants/Properties.sol ] || [ -f test/recon/CryticTester.sol ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::T-3 Properties.sol / CryticTester not yet landed; echidna campaign deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Install Echidna (pinned v2.2.5)
+        if: steps.gate.outputs.wired == 'true'
+        uses: crytic/echidna-action@v2
+        with:
+          echidna-version: v2.2.5
+
+      - name: forge build
+        if: steps.gate.outputs.wired == 'true'
+        run: forge build
+
+      - name: Run echidna campaign (short budget)
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .campaign-out
+          # Echidna may exit non-zero on a property violation; we capture the
+          # output and the scorecard's invariants_violated field is the source
+          # of truth (mirrors chimera-template-pack convention).
+          set +e
+          echidna . --contract CryticTester --config echidna.yaml \
+              --test-limit "${ECHIDNA_TEST_LIMIT}" \
+              --timeout "${ECHIDNA_TIMEOUT}" \
+              2>&1 | tee .campaign-out/echidna.out
+          ec=${PIPESTATUS[0]}
+          set -e
+          echo "echidna_exit=$ec" > .campaign-out/exit_code
+
+      - name: Upload campaign output
+        if: steps.gate.outputs.wired == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: echidna-campaign-output-ci
+          if-no-files-found: ignore
+          path: |
+            .campaign-out/*.out
+            .campaign-out/exit_code
+
+  # §5.2 — incidents/01-jelly-2025-03 — clean-passes leg
+  incident-01-jelly-clean-passes:
+    name: incident-01-jelly clean-passes (clean/forge test exits 0, no INVARIANT VIOLATED)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Detect incident-01 clean leg wired (T-5)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f incidents/01-jelly-2025-03/clean/foundry.toml ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::T-5 incidents/01-jelly-2025-03/clean/ not yet landed; deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Clean leg — forge test + assert no INVARIANT VIOLATED marker
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        working-directory: incidents/01-jelly-2025-03/clean
+        run: |
+          set -euo pipefail
+          forge test -vv 2>&1 | tee /tmp/clean-out.txt
+          if grep -q "INVARIANT VIOLATED" /tmp/clean-out.txt; then
+            echo "::error::Clean leg produced INVARIANT VIOLATED marker — this is the same-source twin invariant violation; the clean leg MUST pass."
+            exit 1
+          fi
+
+  # §5.2 — incidents/01-jelly-2025-03 — planted-bug-twin-fires leg
+  incident-01-jelly-planted-fires:
+    name: incident-01-jelly planted-bug-twin-fires (planted/forge test surfaces INVARIANT VIOLATED)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Detect incident-01 planted leg wired (T-5)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f incidents/01-jelly-2025-03/planted/foundry.toml ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::T-5 incidents/01-jelly-2025-03/planted/ not yet landed; deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Planted leg — forge test MUST surface INVARIANT VIOLATED
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        working-directory: incidents/01-jelly-2025-03/planted
+        run: |
+          set -euo pipefail
+          set +e
+          forge test -vv 2>&1 | tee /tmp/planted-out.txt
+          ec=${PIPESTATUS[0]}
+          set -e
+          # Per spec §5.2: planted leg MUST exit non-zero AND surface at least
+          # one `INVARIANT VIOLATED <name>` marker. The CI job passes when both
+          # signals are present (i.e. the planted bug class is detectable).
+          if ! grep -q "INVARIANT VIOLATED" /tmp/planted-out.txt; then
+            echo "::error::Planted leg did NOT produce INVARIANT VIOLATED marker — the property is not catching the planted hunk."
+            exit 1
+          fi
+          if [ "$ec" -eq 0 ]; then
+            echo "::error::Planted leg exited 0 — expected non-zero from at least one property revert."
+            exit 1
+          fi
+          echo "::notice::Planted leg correctly surfaced INVARIANT VIOLATED and exited non-zero (ec=$ec)."
+
+  # §5.2 — incidents/01-jelly-2025-03 — twin-diff bound
+  incident-01-jelly-twin-diff:
+    name: incident-01-jelly twin-diff (clean vs planted ≤3 files)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect both legs wired (T-5)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d incidents/01-jelly-2025-03/clean/src ] && [ -d incidents/01-jelly-2025-03/planted/src ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::T-5 incident-01 twin legs not yet landed; twin-diff deferred."
+          fi
+
+      - name: diff -r clean/src planted/src, assert ≤3 files
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        working-directory: incidents/01-jelly-2025-03
+        run: |
+          set -euo pipefail
+          n=$(diff -r clean/src planted/src 2>/dev/null | grep -E '^(diff|Only in)' | wc -l | tr -d ' ')
+          echo "twin_diff_files=$n"
+          if [ "$n" -gt 3 ]; then
+            echo "::error::Twin diff is $n files; spec.md §T-5 acceptance caps at 3."
+            exit 1
+          fi

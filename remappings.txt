@@ -1,0 +1,4 @@
+forge-std/=lib/forge-std/src/
+chimera/=lib/chimera/src/
+@recon/=lib/chimera/src/
+@hyper-evm-lib/=lib/hyper-evm-lib/

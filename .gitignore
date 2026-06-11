@@ -1,0 +1,31 @@
+# Foundry
+out/
+cache/
+broadcast/
+
+# Echidna / Medusa
+echidna-corpus/
+medusa-corpus/
+crytic-export/
+.campaign-out/
+
+# Halmos
+halmos-cache/
+
+# Forge deps (managed by `forge install`; tags pinned in foundry.toml)
+lib/forge-std/
+lib/chimera/
+lib/hyper-evm-lib/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Env
+.env
+.env.local
+
+# Internal planning docs (not part of the published library)
+spec.md

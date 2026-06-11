@@ -1,0 +1,42 @@
+# hyperevm-safety — Echidna campaign config (M1 CI baseline)
+#
+# Per spec.md §5.5 (Determinism): seed pinned, short campaign budget for CI.
+# Nightly campaigns raise the budget (see .github/workflows/nightly.yml env).
+# Adapted from caliperforge/chimera-template-pack — same defaults pattern,
+# library-calibrated for the Properties.sol entry point T-3 lands.
+
+# Assertion mode catches both assert() failures (Chimera before/after snapshots)
+# and Properties.sol bool returns. The library-side properties primarily emit
+# `INVARIANT VIOLATED <name>` strings before reverting; both surfaces flag here.
+testMode: assertion
+
+# CI-friendly budget. Nightly uses --test-limit / --timeout overrides to push
+# the campaign to ~1M sequences / 30 min.
+testLimit: 50000
+timeout: 300            # seconds (5 min)
+seqLen: 100             # transaction sequence depth
+shrinkLimit: 5000
+
+# Coverage-guided fuzz; Echidna's instrumentation is on by default.
+coverage: true
+corpusDir: "echidna-corpus"
+
+# Deterministic seed — spec §5.5 requires same budget → same scorecard byte-for-byte.
+seed: 0x68797065726576
+
+# Contract under test. T-3 lands invariants/Properties.sol; the Chimera pattern
+# wraps it in test/recon/CryticTester.sol. CI runs against CryticTester.
+contract: "CryticTester"
+
+# Only call wrapped `target_*` / `helper_*` functions exposed in TargetFunctions;
+# avoids Echidna mutating internal harness state directly.
+filterFunctions:
+  - "_logProperty(string)"
+filterBlacklist: true
+
+# Workers — 1 keeps CI deterministic; bump locally for parallel campaigns.
+workers: 1
+
+# Reporting. The capture script (T-5 / chimera-template-pack
+# scripts/capture_scorecard.sh) post-processes plain text with sed to strip ANSI.
+format: text

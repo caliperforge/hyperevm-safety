@@ -1,0 +1,64 @@
+name: "Foundry setup (pinned)"
+description: >
+  Composite action: install a pinned Foundry toolchain, run `forge install` for
+  the pinned forge-std + chimera + hyper-evm-lib deps, and (optionally) build.
+  Pattern referenced from caliperforge/chimera-template-pack; tags pinned here
+  rather than vendored so they're greppable from one place.
+
+inputs:
+  foundry-version:
+    description: >
+      Foundry release/version to install (nightly tag or commit). Defaults to
+      the pinned commit so PR CI is deterministic per spec.md §5.5. The
+      `nightly.yml` matrix overrides with `nightly` on its "latest" leg to
+      surface upstream drift.
+    required: false
+    default: "nightly-de33b6af53005037b463318d2628b5cfcaf39916"
+  forge-std-version:
+    description: "forge-std tag to install."
+    required: false
+    default: "v1.9.4"
+  chimera-version:
+    description: "Recon-Fuzz/chimera ref to install (tag, branch, or commit)."
+    required: false
+    default: "main"
+  hyper-evm-lib-version:
+    description: >
+      hyperliquid-dev/hyper-evm-lib ref to install. Pinned per the T-2
+      purrkit-vs-hyper-evm-lib evaluation (see `docs/hyper-evm-lib-notes.md`).
+      Bumping is a deliberate maintainer action: nightly.yml runs a "latest"
+      leg that surfaces drift; bumping the default requires re-running the
+      T-2 evaluation against the new HEAD.
+    required: false
+    default: "6abf28fca081f56c43b0f94af23699f1b43d2329"
+  install-hyper-evm-lib:
+    description: "Whether to forge install hyper-evm-lib (set 'false' for jobs that don't need it)."
+    required: false
+    default: "true"
+  build:
+    description: "Whether to run `forge build` after install."
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Foundry (${{ inputs.foundry-version }})
+      uses: foundry-rs/foundry-toolchain@v1
+      with:
+        version: ${{ inputs.foundry-version }}
+
+    - name: forge install (pinned deps)
+      shell: bash
+      run: |
+        set -euo pipefail
+        forge install --no-commit "foundry-rs/forge-std@${{ inputs.forge-std-version }}" || true
+        forge install --no-commit "Recon-Fuzz/chimera@${{ inputs.chimera-version }}" || true
+        if [ "${{ inputs.install-hyper-evm-lib }}" = "true" ]; then
+          forge install --no-commit "hyperliquid-dev/hyper-evm-lib@${{ inputs.hyper-evm-lib-version }}" || true
+        fi
+
+    - name: forge build
+      if: ${{ inputs.build == 'true' }}
+      shell: bash
+      run: forge build --sizes

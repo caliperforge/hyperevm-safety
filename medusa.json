@@ -1,0 +1,79 @@
+{
+  "$schema": "https://github.com/crytic/medusa/blob/master/medusa.schema.json",
+  "_comment": "hyperevm-safety — Medusa config (M1 config-only per T-6). Spec §5.5: seed pinned. Medusa CI job lands in T-CI-medusa under M2.",
+  "fuzzing": {
+    "workers": 2,
+    "workerResetLimit": 50,
+    "timeout": 300,
+    "testLimit": 50000,
+    "callSequenceLength": 100,
+    "corpusDirectory": "medusa-corpus",
+    "coverageEnabled": true,
+    "targetContracts": ["CryticTester"],
+    "constructorArgs": {},
+    "deployerAddress": "0x30000",
+    "senderAddresses": [
+      "0x10000",
+      "0x20000",
+      "0x30000"
+    ],
+    "blockNumberDelayMax": 60480,
+    "blockTimestampDelayMax": 604800,
+    "blockGasLimit": 125000000,
+    "transactionGasLimit": 12500000,
+    "testChainConfig": {
+      "_comment": "Spec §5.5 determinism: seed pinned. Same budget → same scorecard byte-for-byte."
+    },
+    "fuzzerSeed": 7370657273697374,
+    "testing": {
+      "stopOnFailedTest": false,
+      "stopOnFailedContractMatching": false,
+      "stopOnNoTests": true,
+      "testAllContracts": false,
+      "traceAll": false,
+      "assertionTesting": {
+        "enabled": true,
+        "testViewMethods": false,
+        "panicCodeConfig": {
+          "failOnCompilerInsertedPanic": false,
+          "failOnAssertion": true,
+          "failOnArithmeticUnderflow": false,
+          "failOnDivideByZero": false,
+          "failOnEnumTypeConversionOutOfBounds": false,
+          "failOnIncorrectStorageAccess": false,
+          "failOnPopEmptyArray": false,
+          "failOnOutOfBoundsArrayAccess": false,
+          "failOnUninitializedContractCall": false
+        }
+      },
+      "propertyTesting": {
+        "enabled": true,
+        "testPrefixes": ["property_"]
+      },
+      "optimizationTesting": {
+        "enabled": false,
+        "testPrefixes": ["optimize_"]
+      }
+    },
+    "chainConfig": {
+      "codeSizeCheckDisabled": true,
+      "cheatCodes": {
+        "cheatCodesEnabled": true,
+        "enableFFI": false
+      }
+    }
+  },
+  "compilation": {
+    "platform": "crytic-compile",
+    "platformConfig": {
+      "target": ".",
+      "solcVersion": "",
+      "exportDirectory": "",
+      "args": ["--foundry-compile-all"]
+    }
+  },
+  "logging": {
+    "level": "info",
+    "logDirectory": ""
+  }
+}
