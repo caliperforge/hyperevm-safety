@@ -102,11 +102,15 @@ jobs:
         if: steps.gate.outputs.wired == 'true'
         uses: ./.github/actions/foundry-setup
 
-      - name: forge test --match-path invariants/*.t.sol
+      - name: forge test --match-path invariants/*.t.sol (clean invariants only)
         if: steps.gate.outputs.wired == 'true'
         run: |
           set -euo pipefail
-          forge test --match-path 'invariants/*.t.sol' -vv
+          # --no-match-path excludes the planted twins in invariants/planted/;
+          # Foundry's * glob matches across directory separators, so without
+          # the exclusion the planted-fires tests would contaminate this job.
+          forge test --match-path 'invariants/*.t.sol' \
+            --no-match-path 'invariants/planted/*' -vv
 
       - name: Capture scorecards
         if: steps.gate.outputs.wired == 'true'
@@ -333,3 +337,173 @@ jobs:
             echo "::error::Twin diff is $n files; spec.md §T-5 acceptance caps at 3."
             exit 1
           fi
+
+  # M2 §5.2 — D-3 SzDecimalsRoundTrip — clean-passes leg
+  d3-szdec-roundtrip-clean-passes:
+    name: d3-szdec-roundtrip clean-passes (SzDecimalsRoundTrip.t.sol — no INVARIANT VIOLATED)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Detect D-3 planted twin wired (M2)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f invariants/planted/SzDecimalsRoundTrip.planted.t.sol ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::M2 D-3 planted twin not yet landed; d3-szdec-roundtrip-clean-passes deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Clean leg — forge test SzDecimalsRoundTrip + assert no INVARIANT VIOLATED
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          forge test --match-path 'invariants/SzDecimalsRoundTrip.t.sol' -vv 2>&1 | tee /tmp/d3-clean-out.txt
+          if grep -q "INVARIANT VIOLATED" /tmp/d3-clean-out.txt; then
+            echo "::error::D-3 clean leg produced INVARIANT VIOLATED marker — clean leg MUST pass silently."
+            exit 1
+          fi
+
+  # M2 §5.2 — D-3 SzDecimalsRoundTrip — planted-fires leg
+  d3-szdec-roundtrip-planted-fires:
+    name: d3-szdec-roundtrip planted-fires (SzDecimalsRoundTrip.planted.t.sol surfaces INVARIANT VIOLATED)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Detect D-3 planted twin wired (M2)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f invariants/planted/SzDecimalsRoundTrip.planted.t.sol ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::M2 D-3 planted twin not yet landed; d3-szdec-roundtrip-planted-fires deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Planted leg — forge test MUST surface INVARIANT VIOLATED SzDecimalsRoundTrip
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          forge test --match-path 'invariants/planted/SzDecimalsRoundTrip.planted.t.sol' -vv \
+            2>&1 | tee /tmp/d3-planted-out.txt
+          ec=${PIPESTATUS[0]}
+          set -e
+          if ! grep -q "INVARIANT VIOLATED" /tmp/d3-planted-out.txt; then
+            echo "::error::D-3 planted leg did NOT produce INVARIANT VIOLATED marker — the property is not catching the planted hunk."
+            exit 1
+          fi
+          if [ "$ec" -eq 0 ]; then
+            echo "::error::D-3 planted leg exited 0 — expected non-zero from property revert."
+            exit 1
+          fi
+          echo "::notice::D-3 planted leg correctly surfaced INVARIANT VIOLATED and exited non-zero (ec=$ec)."
+
+  # M2 §5.2 — D-6 ChainlinkAdapterDefeatsStaleness — clean-passes leg
+  d6-chainlink-defeats-clean-passes:
+    name: d6-chainlink-defeats clean-passes (ChainlinkAdapterDefeats.t.sol — no INVARIANT VIOLATED)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Detect D-6 planted twin wired (M2)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f invariants/planted/ChainlinkAdapterDefeats.planted.t.sol ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::M2 D-6 planted twin not yet landed; d6-chainlink-defeats-clean-passes deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Clean leg — forge test ChainlinkAdapterDefeats + assert no INVARIANT VIOLATED
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          forge test --match-path 'invariants/ChainlinkAdapterDefeats.t.sol' -vv 2>&1 | tee /tmp/d6-clean-out.txt
+          if grep -q "INVARIANT VIOLATED" /tmp/d6-clean-out.txt; then
+            echo "::error::D-6 clean leg produced INVARIANT VIOLATED marker — clean leg MUST pass silently."
+            exit 1
+          fi
+
+  # M2 §5.2 — D-6 ChainlinkAdapterDefeatsStaleness — planted-fires leg
+  d6-chainlink-defeats-planted-fires:
+    name: d6-chainlink-defeats planted-fires (ChainlinkAdapterDefeats.planted.t.sol surfaces INVARIANT VIOLATED)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Detect D-6 planted twin wired (M2)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f invariants/planted/ChainlinkAdapterDefeats.planted.t.sol ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::M2 D-6 planted twin not yet landed; d6-chainlink-defeats-planted-fires deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Planted leg — forge test MUST surface INVARIANT VIOLATED ChainlinkAdapterDefeatsStaleness
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          forge test --match-path 'invariants/planted/ChainlinkAdapterDefeats.planted.t.sol' -vv \
+            2>&1 | tee /tmp/d6-planted-out.txt
+          ec=${PIPESTATUS[0]}
+          set -e
+          if ! grep -q "INVARIANT VIOLATED" /tmp/d6-planted-out.txt; then
+            echo "::error::D-6 planted leg did NOT produce INVARIANT VIOLATED marker — the property is not catching the planted hunk."
+            exit 1
+          fi
+          if [ "$ec" -eq 0 ]; then
+            echo "::error::D-6 planted leg exited 0 — expected non-zero from property revert."
+            exit 1
+          fi
+          echo "::notice::D-6 planted leg correctly surfaced INVARIANT VIOLATED and exited non-zero (ec=$ec)."

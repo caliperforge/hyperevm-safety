@@ -90,6 +90,34 @@ contract ChainlinkAdapterDefeatsTest is Test {
     }
 
     // -------------------------------------------------------------------------
+    // Property (Foundry fuzz — dissolves O-M1): for any freeze duration above
+    // the staleness bound, the library's adapter always surfaces it; the broken
+    // adapter always misses it. This is the Foundry-fuzz-backed counterpart to
+    // the Echidna `property_chainlinkAdapterTracksHyperCorePublish` predicate
+    // in `Properties.sol`.
+    // -------------------------------------------------------------------------
+
+    function testFuzz_property_hyperCoreFreeze_goodDetects_brokenMisses(
+        uint64 freezeExtra
+    ) public {
+        // Advance EVM wall-clock by at least (stalenessBound + 1) seconds
+        // beyond steady-state without advancing the L1 block.
+        uint256 delta = uint256(freezeExtra % 10_000) + STALENESS_BOUND_SECONDS + 1;
+        vm.warp(block.timestamp + delta);
+
+        // Good adapter: updatedAt reflects the frozen L1 publish timestamp;
+        // lag grows with delta and must exceed STALENESS_BOUND_SECONDS.
+        (, , , uint256 goodUpdatedAt, ) = goodAdapter.latestRoundData();
+        uint256 goodLag = block.timestamp - goodUpdatedAt;
+        assertGt(goodLag, STALENESS_BOUND_SECONDS, "good adapter MUST surface freeze");
+
+        // Broken adapter: updatedAt == block.timestamp always → lag = 0.
+        (, , , uint256 brokenUpdatedAt, ) = brokenAdapter.latestRoundData();
+        uint256 brokenLag = block.timestamp - brokenUpdatedAt;
+        assertEq(brokenLag, 0, "broken adapter ALWAYS returns 0 lag (the bug)");
+    }
+
+    // -------------------------------------------------------------------------
     // Property: as HyperCore advances, the library's adapter updates updatedAt.
     // -------------------------------------------------------------------------
 
