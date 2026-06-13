@@ -66,13 +66,61 @@ jobs:
         with:
           foundry-version: ${{ matrix.foundry_version }}
 
-      - name: forge build + invariants
+      - name: forge build + clean invariants (no planted twins)
         if: steps.gate.outputs.wired == 'true'
         shell: bash
         run: |
           set -euo pipefail
           forge build --sizes
-          forge test --match-path 'invariants/*.t.sol' -vv
+          # --no-match-path mirrors ci.yml library-properties-clean; Foundry's *
+          # glob matches across directory separators so this exclusion is required
+          # to keep the designed-to-revert planted twins out of the clean leg.
+          forge test --match-path 'invariants/*.t.sol' \
+            --no-match-path 'invariants/planted/*' -vv
+
+      - name: Planted twins — D-3 SzDecimalsRoundTrip fires (${{ matrix.leg }})
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Planted twin MUST revert with INVARIANT VIOLATED — this is the
+          # expected-revert pattern from ci.yml d3-szdec-roundtrip-planted-fires.
+          set +e
+          forge test --match-path 'invariants/planted/SzDecimalsRoundTrip.planted.t.sol' -vv \
+            2>&1 | tee /tmp/d3-planted.txt
+          ec=${PIPESTATUS[0]}
+          set -e
+          if ! grep -q "INVARIANT VIOLATED" /tmp/d3-planted.txt; then
+            echo "::error::D-3 planted twin did NOT fire INVARIANT VIOLATED — property is not catching the planted hunk."
+            exit 1
+          fi
+          if [ "$ec" -eq 0 ]; then
+            echo "::error::D-3 planted twin exited 0 — expected non-zero from property revert."
+            exit 1
+          fi
+          echo "::notice::D-3 planted twin correctly surfaced INVARIANT VIOLATED and exited non-zero (ec=$ec)."
+
+      - name: Planted twins — D-6 ChainlinkAdapterDefeats fires (${{ matrix.leg }})
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Planted twin MUST revert with INVARIANT VIOLATED — this is the
+          # expected-revert pattern from ci.yml d6-chainlink-defeats-planted-fires.
+          set +e
+          forge test --match-path 'invariants/planted/ChainlinkAdapterDefeats.planted.t.sol' -vv \
+            2>&1 | tee /tmp/d6-planted.txt
+          ec=${PIPESTATUS[0]}
+          set -e
+          if ! grep -q "INVARIANT VIOLATED" /tmp/d6-planted.txt; then
+            echo "::error::D-6 planted twin did NOT fire INVARIANT VIOLATED — property is not catching the planted hunk."
+            exit 1
+          fi
+          if [ "$ec" -eq 0 ]; then
+            echo "::error::D-6 planted twin exited 0 — expected non-zero from property revert."
+            exit 1
+          fi
+          echo "::notice::D-6 planted twin correctly surfaced INVARIANT VIOLATED and exited non-zero (ec=$ec)."
 
   # ────────────────── Echidna ──────────────────
   echidna:
@@ -98,11 +146,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f invariants/Properties.sol ] || [ -f test/recon/CryticTester.sol ]; then
+          # DEFERRED: crytic/echidna-action container cannot see forge from the
+          # host runner (ERROR:CryticCompile:Cannot execute 'forge'). Gate mirrors
+          # PR-CI deferral (commit 4fa6da30c). Fix tracked as T-CI-echidna; flip
+          # by touching .github/.echidna-pr-ci-wired once forge is visible.
+          if [ -f .github/.echidna-pr-ci-wired ] && \
+             { [ -f invariants/Properties.sol ] || [ -f test/recon/CryticTester.sol ]; }; then
             echo "wired=true" >> "$GITHUB_OUTPUT"
           else
             echo "wired=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Properties.sol / CryticTester not landed; echidna nightly deferred (${{ matrix.leg }})."
+            echo "::notice::T-CI-echidna deferred — forge not visible to echidna-action container; echidna nightly skipped (${{ matrix.leg }})."
           fi
 
       - name: Foundry setup (pinned)
