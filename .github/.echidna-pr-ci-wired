@@ -1,0 +1,12 @@
+# Sentinel: un-gates the `library-properties-fuzz-echidna` CI job.
+#
+# Presence of this file signals that:
+#   1. CryticTester is in-tree (invariants/Properties.sol) ✓
+#   2. echidna.yaml references `contract: CryticTester` ✓
+#   3. The CI job installs foundry BEFORE echidna, so crytic-compile can
+#      compile the Foundry project (no forge-in-container snag) ✓
+#   4. `crytic/echidna-action@v2` is used in install-only mode (no `files`
+#      input); the campaign is run via a shell step where forge is on PATH ✓
+#
+# Wired: 2026-06-19 (fix/ci-echidna-and-d4d5-twins)
+# Ticket: T-CI-echidna (resolved)

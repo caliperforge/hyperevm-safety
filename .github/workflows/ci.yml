@@ -507,3 +507,173 @@ jobs:
             exit 1
           fi
           echo "::notice::D-6 planted leg correctly surfaced INVARIANT VIOLATED and exited non-zero (ec=$ec)."
+
+  # M2 §5.2 — D-4 PrecompileGasDoS — clean-passes leg
+  d4-precompile-gasdos-clean-passes:
+    name: d4-precompile-gasdos clean-passes (PrecompileGasDoS.t.sol — no INVARIANT VIOLATED)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Detect D-4 planted twin wired (M2)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f invariants/planted/PrecompileGasDoS.planted.t.sol ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::M2 D-4 planted twin not yet landed; d4-precompile-gasdos-clean-passes deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Clean leg — forge test PrecompileGasDoS + assert no INVARIANT VIOLATED
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          forge test --match-path 'invariants/PrecompileGasDoS.t.sol' -vv 2>&1 | tee /tmp/d4-clean-out.txt
+          if grep -q "INVARIANT VIOLATED" /tmp/d4-clean-out.txt; then
+            echo "::error::D-4 clean leg produced INVARIANT VIOLATED marker — clean leg MUST pass silently."
+            exit 1
+          fi
+
+  # M2 §5.2 — D-4 PrecompileGasDoS — planted-fires leg
+  d4-precompile-gasdos-planted-fires:
+    name: d4-precompile-gasdos planted-fires (PrecompileGasDoS.planted.t.sol surfaces INVARIANT VIOLATED)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Detect D-4 planted twin wired (M2)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f invariants/planted/PrecompileGasDoS.planted.t.sol ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::M2 D-4 planted twin not yet landed; d4-precompile-gasdos-planted-fires deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Planted leg — forge test MUST surface INVARIANT VIOLATED PrecompileGasDoS
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          forge test --match-path 'invariants/planted/PrecompileGasDoS.planted.t.sol' -vv \
+            2>&1 | tee /tmp/d4-planted-out.txt
+          ec=${PIPESTATUS[0]}
+          set -e
+          if ! grep -q "INVARIANT VIOLATED" /tmp/d4-planted-out.txt; then
+            echo "::error::D-4 planted leg did NOT produce INVARIANT VIOLATED marker — the property is not catching the planted hunk."
+            exit 1
+          fi
+          if [ "$ec" -eq 0 ]; then
+            echo "::error::D-4 planted leg exited 0 — expected non-zero from property revert."
+            exit 1
+          fi
+          echo "::notice::D-4 planted leg correctly surfaced INVARIANT VIOLATED and exited non-zero (ec=$ec)."
+
+  # M2 §5.2 — D-5 CoreWriterSolvencyWindow — clean-passes leg
+  d5-corewriter-solvency-clean-passes:
+    name: d5-corewriter-solvency clean-passes (CoreWriterSolvencyWindow.t.sol — no INVARIANT VIOLATED)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Detect D-5 planted twin wired (M2)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f invariants/planted/CoreWriterSolvencyWindow.planted.t.sol ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::M2 D-5 planted twin not yet landed; d5-corewriter-solvency-clean-passes deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Clean leg — forge test CoreWriterSolvencyWindow + assert no INVARIANT VIOLATED
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          forge test --match-path 'invariants/CoreWriterSolvencyWindow.t.sol' -vv 2>&1 | tee /tmp/d5-clean-out.txt
+          if grep -q "INVARIANT VIOLATED" /tmp/d5-clean-out.txt; then
+            echo "::error::D-5 clean leg produced INVARIANT VIOLATED marker — clean leg MUST pass silently."
+            exit 1
+          fi
+
+  # M2 §5.2 — D-5 CoreWriterSolvencyWindow — planted-fires leg
+  d5-corewriter-solvency-planted-fires:
+    name: d5-corewriter-solvency planted-fires (CoreWriterSolvencyWindow.planted.t.sol surfaces INVARIANT VIOLATED)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Detect D-5 planted twin wired (M2)
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f invariants/planted/CoreWriterSolvencyWindow.planted.t.sol ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::M2 D-5 planted twin not yet landed; d5-corewriter-solvency-planted-fires deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Planted leg — forge test MUST surface INVARIANT VIOLATED CoreWriterSolvencyWindow
+        if: steps.gate.outputs.wired == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          forge test --match-path 'invariants/planted/CoreWriterSolvencyWindow.planted.t.sol' -vv \
+            2>&1 | tee /tmp/d5-planted-out.txt
+          ec=${PIPESTATUS[0]}
+          set -e
+          if ! grep -q "INVARIANT VIOLATED" /tmp/d5-planted-out.txt; then
+            echo "::error::D-5 planted leg did NOT produce INVARIANT VIOLATED marker — the property is not catching the planted hunk."
+            exit 1
+          fi
+          if [ "$ec" -eq 0 ]; then
+            echo "::error::D-5 planted leg exited 0 — expected non-zero from property revert."
+            exit 1
+          fi
+          echo "::notice::D-5 planted leg correctly surfaced INVARIANT VIOLATED and exited non-zero (ec=$ec)."
