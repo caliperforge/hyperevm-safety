@@ -188,6 +188,12 @@ jobs:
           sudo tar -xzf /tmp/echidna.tar.gz -C /usr/local/bin/
           sudo chmod +x /usr/local/bin/echidna
           echidna --version
+          # crytic-compile is the Python compilation driver echidna invokes to
+          # compile the Foundry project — it is NOT bundled in the static binary.
+          # For Foundry projects crytic-compile calls `forge build --build-info`
+          # internally; forge is already on PATH from the foundry-setup step.
+          pip install crytic-compile
+          crytic-compile --version
 
       - name: forge build
         if: steps.gate.outputs.wired == 'true'
@@ -210,6 +216,20 @@ jobs:
           ec=${PIPESTATUS[0]}
           set -e
           echo "echidna_exit=$ec" > .campaign-out/exit_code
+          # ── Fail-loud gate ─────────────────────────────────────────────────
+          # A campaign that doesn't start (e.g. crytic-compile missing, compile
+          # error) exits in under a second and emits ZERO echidna_* property
+          # result lines. A campaign that ran — even one finding violations —
+          # always emits at least one echidna_* result line. Gate on that.
+          if ! grep -qE "^echidna_[A-Za-z0-9_]+:" .campaign-out/echidna.out; then
+            echo "::error::echidna campaign produced no property result lines — it likely crashed before running."
+            echo "--- echidna.out (first 40 lines) ---"
+            head -40 .campaign-out/echidna.out || true
+            echo "--- end ---"
+            exit 1
+          fi
+          seq_count=$(grep -cE "^echidna_[A-Za-z0-9_]+:" .campaign-out/echidna.out || echo 0)
+          echo "::notice::echidna campaign ran — ${seq_count} property result line(s) found (exit=${ec})."
 
       - name: Upload campaign output
         if: steps.gate.outputs.wired == 'true' && always()
