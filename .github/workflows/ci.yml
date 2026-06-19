@@ -171,11 +171,23 @@ jobs:
         if: steps.gate.outputs.wired == 'true'
         uses: ./.github/actions/foundry-setup
 
-      - name: Install Echidna (pinned v2.2.5)
+      - name: Install Echidna (pinned v2.2.5 — native binary, no Docker)
         if: steps.gate.outputs.wired == 'true'
-        uses: crytic/echidna-action@v2
-        with:
-          echidna-version: v2.2.5
+        shell: bash
+        run: |
+          set -euo pipefail
+          # crytic/echidna-action@v2 is a Docker container action that runs
+          # echidna inside trailofbits/echidna:v2.2.5 — a container that lacks
+          # forge, so crytic-compile cannot compile our Foundry project.
+          # Fix (T-CI-echidna): install the static echidna binary directly from
+          # GitHub releases and run it natively so forge (already on PATH from
+          # the foundry-setup step above) is visible to crytic-compile.
+          ECHIDNA_VERSION="2.2.5"
+          URL="https://github.com/crytic/echidna/releases/download/v${ECHIDNA_VERSION}/echidna-${ECHIDNA_VERSION}-x86_64-linux.tar.gz"
+          curl -fsSL "${URL}" -o /tmp/echidna.tar.gz
+          sudo tar -xzf /tmp/echidna.tar.gz -C /usr/local/bin/
+          sudo chmod +x /usr/local/bin/echidna
+          echidna --version
 
       - name: forge build
         if: steps.gate.outputs.wired == 'true'
