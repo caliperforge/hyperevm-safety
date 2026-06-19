@@ -1,12 +1,30 @@
 # Sentinel: un-gates the `library-properties-fuzz-echidna` CI job.
 #
-# Presence of this file signals that:
+# CURRENT STATUS: BLOCKED — campaign fails at contract-deploy time.
+# See agents/solidity_specialist/outbox/hyperevm_echidna_realgreen_2026-06-19.md
+# for the full diagnosis and decision options.
+#
+# ── What is wired (PR-CI echidna fix/ci-echidna-and-d4d5-twins) ─────────────
 #   1. CryticTester is in-tree (invariants/Properties.sol) ✓
 #   2. echidna.yaml references `contract: CryticTester` ✓
-#   3. The CI job installs foundry BEFORE echidna, so crytic-compile can
-#      compile the Foundry project (no forge-in-container snag) ✓
-#   4. `crytic/echidna-action@v2` is used in install-only mode (no `files`
-#      input); the campaign is run via a shell step where forge is on PATH ✓
+#   3. CI installs static echidna v2.2.5 binary (native, not Docker) ✓
+#   4. crytic-compile installed via pip (Fix A, 2026-06-19) ✓
+#      → crytic-compile compiled the project successfully in CI
+#   5. Campaign step now FAIL-LOUD (Fix B, 2026-06-19): checks for
+#      echidna_* property result lines; exits 1 if none found ✓
 #
-# Wired: 2026-06-19 (fix/ci-echidna-and-d4d5-twins)
-# Ticket: T-CI-echidna (resolved)
+# ── Blocker (run 27851710417 — genuine new error, not cosmetic green) ────────
+#   MockPrecompiles.sol uses vm.mockCall (Foundry cheatcode selector 0xb96213e4).
+#   Echidna's EVM does NOT support Foundry cheatcodes. CryticTester constructor
+#   calls _setupProperties() → MockPrecompiles.setMark() → vm.mockCall() → FAILS.
+#   echidna error: "Deploying the contract ... failed: error BadCheatCode 0xb96213e4"
+#
+# ── What this means ──────────────────────────────────────────────────────────
+#   The echidna PR-CI job now turns RED for the right reason (not cosmetic green).
+#   T-CI-echidna is NOT resolved. A new ticket (T-CI-echidna-v2) is required
+#   to either: (a) refactor CryticTester to use non-Foundry mock strategy for
+#   precompile responses, or (b) defer echidna to nightly-only and update the
+#   sentinel to gate=false. Decision queued in ops/decisions.md.
+#
+# Wired (partial): 2026-06-19 (fix/ci-echidna-and-d4d5-twins)
+# Ticket: T-CI-echidna (BLOCKED — see T-CI-echidna-v2 decision)
