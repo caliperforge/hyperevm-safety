@@ -5,7 +5,13 @@ import {HyperCoreOracleGuard} from "../src/HyperCoreOracleGuard.sol";
 import {ChainlinkCompatAdapter} from "../src/ChainlinkCompatAdapter.sol";
 import {SzDecimalsLib} from "../src/SzDecimalsLib.sol";
 import {HyperCorePrecompileAddresses} from "../src/interfaces/IHyperCorePrecompiles.sol";
-import {MockPrecompiles} from "./mocks/MockPrecompiles.sol";
+import {
+    MockMarkPrecompile,
+    MockOraclePrecompile,
+    MockL1BlockPrecompile,
+    MockPerpAssetInfoPrecompile,
+    MockTokenInfoPrecompile
+} from "./mocks/StatefulMockPrecompiles.sol";
 
 /// @title Properties — Recon Chimera property bundle for hyperevm-safety library M1.
 /// @notice Spec.md §T-3 acceptance: this is the Properties.sol Recon Chimera bundle
@@ -73,14 +79,21 @@ abstract contract Properties {
         );
 
         // Seed mock state.
+        // The stateful mock contracts are pre-deployed at the canonical precompile addresses
+        // by echidna's `deployContracts` config stanza (echidna.yaml). We call their setters
+        // directly — no Foundry cheatcodes, so this path works in both echidna and Foundry.
         mirrorMark = SEED_PRICE;
         mirrorOracle = SEED_PRICE;
         mirrorL1Block = 100_000;
-        MockPrecompiles.setMark(ASSET, mirrorMark);
-        MockPrecompiles.setOracle(ASSET, mirrorOracle);
-        MockPrecompiles.setL1BlockNumber(mirrorL1Block);
-        MockPrecompiles.setSpotDecimals(SPOT_TOKEN, SPOT_SZ, SPOT_WEI, SPOT_EVM_EXTRA);
-        MockPrecompiles.setPerpSzDecimals(PERP_ASSET, PERP_SZ);
+        MockMarkPrecompile(HyperCorePrecompileAddresses.MARK).setMark(ASSET, mirrorMark);
+        MockOraclePrecompile(HyperCorePrecompileAddresses.ORACLE).setOracle(ASSET, mirrorOracle);
+        MockL1BlockPrecompile(HyperCorePrecompileAddresses.L1_BLOCK_NUMBER).setL1Block(mirrorL1Block);
+        MockTokenInfoPrecompile(HyperCorePrecompileAddresses.TOKEN_INFO).setTokenInfo(
+            SPOT_TOKEN, SPOT_SZ, SPOT_WEI, SPOT_EVM_EXTRA
+        );
+        MockPerpAssetInfoPrecompile(HyperCorePrecompileAddresses.PERP_ASSET_INFO).setPerpAssetInfo(
+            PERP_ASSET, PERP_SZ
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -92,20 +105,20 @@ abstract contract Properties {
         // Bound to a sane range around SEED_PRICE: ±50% of seed.
         uint64 bounded = uint64(uint256(SEED_PRICE) / 2 + (uint256(px) % SEED_PRICE));
         mirrorMark = bounded;
-        MockPrecompiles.setMark(ASSET, bounded);
+        MockMarkPrecompile(HyperCorePrecompileAddresses.MARK).setMark(ASSET, bounded);
     }
 
     function target_setOracle(uint64 px) external {
         uint64 bounded = uint64(uint256(SEED_PRICE) / 2 + (uint256(px) % SEED_PRICE));
         mirrorOracle = bounded;
-        MockPrecompiles.setOracle(ASSET, bounded);
+        MockOraclePrecompile(HyperCorePrecompileAddresses.ORACLE).setOracle(ASSET, bounded);
     }
 
     function target_advanceL1Block(uint8 delta) external {
         // Bound delta to keep L1 within a reasonable window of EVM block.
         uint64 bounded = uint64(uint256(delta) % 20);
         mirrorL1Block += bounded;
-        MockPrecompiles.setL1BlockNumber(mirrorL1Block);
+        MockL1BlockPrecompile(HyperCorePrecompileAddresses.L1_BLOCK_NUMBER).setL1Block(mirrorL1Block);
     }
 
     // -------------------------------------------------------------------------

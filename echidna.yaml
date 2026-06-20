@@ -28,6 +28,22 @@ seed: 0x68797065726576
 # wraps it in test/recon/CryticTester.sol. CI runs against CryticTester.
 contract: "CryticTester"
 
+# Pre-deploy stateful mock precompile contracts at the canonical HyperCore addresses
+# BEFORE deploying CryticTester. This replaces the Foundry vm.mockCall approach that
+# is incompatible with echidna's HEVM backend (BadCheatCode 0xb96213e4).
+#
+# Each mock exposes:
+#   - A named setter function (called by Properties.sol constructor / target_* actions)
+#   - A fallback() that responds to the library's raw staticcall(abi.encode(asset)) reads
+#
+# See: invariants/mocks/StatefulMockPrecompiles.sol
+deployContracts:
+  - ["0x0000000000000000000000000000000000000806", "MockMarkPrecompile"]
+  - ["0x0000000000000000000000000000000000000807", "MockOraclePrecompile"]
+  - ["0x0000000000000000000000000000000000000808", "MockL1BlockPrecompile"]
+  - ["0x0000000000000000000000000000000000000809", "MockPerpAssetInfoPrecompile"]
+  - ["0x000000000000000000000000000000000000080b", "MockTokenInfoPrecompile"]
+
 # Only call wrapped `target_*` / `helper_*` functions exposed in TargetFunctions;
 # avoids Echidna mutating internal harness state directly.
 filterFunctions:

@@ -1,30 +1,46 @@
 # Sentinel: un-gates the `library-properties-fuzz-echidna` CI job.
 #
-# CURRENT STATUS: BLOCKED — campaign fails at contract-deploy time.
-# See agents/solidity_specialist/outbox/hyperevm_echidna_realgreen_2026-06-19.md
-# for the full diagnosis and decision options.
+# CURRENT STATUS: REFACTORED — awaiting CI run to confirm real-green.
+# See agents/solidity_specialist/outbox/hyperevm_echidna_v2_mock_refactor_2026-06-20.md
+# for the full architecture and CI run id (to be filled on first green CI run).
 #
-# ── What is wired (PR-CI echidna fix/ci-echidna-and-d4d5-twins) ─────────────
+# ── What changed (T-CI-echidna-v2-mock-refactor-2026-06-20) ─────────────────
+#   BLOCKER FIXED: vm.mockCall incompatibility resolved by replacing Foundry
+#   cheatcode mocks with stateful mock precompile contracts.
+#
+#   NEW:
+#     invariants/mocks/StatefulMockPrecompiles.sol — 5 stateful mock contracts,
+#     no Foundry imports, no cheatcodes. Each contract:
+#       - Has a named setter function (called by Properties.sol)
+#       - Has a fallback() that handles staticcall(abi.encode(asset)) reads
+#         from the library code (no function selector — goes to fallback)
+#
+#   CHANGED:
+#     invariants/Properties.sol — removed `import MockPrecompiles`; now calls
+#     setters directly on mock contracts at canonical addresses:
+#       MockMarkPrecompile(0x806).setMark(...)
+#       MockOraclePrecompile(0x807).setOracle(...)
+#       MockL1BlockPrecompile(0x808).setL1Block(...)
+#       MockTokenInfoPrecompile(0x80B).setTokenInfo(...)
+#       MockPerpAssetInfoPrecompile(0x809).setPerpAssetInfo(...)
+#
+#     echidna.yaml — added `deployContracts` to pre-deploy mock contracts
+#     at canonical HyperCore precompile addresses before CryticTester deploys.
+#
+#   UNCHANGED:
+#     invariants/*.t.sol — all Foundry unit tests keep their vm.mockCall path
+#     (MockPrecompiles.sol) unchanged; they do not import Properties.sol.
+#
+# ── Previously wired (2026-06-19) ─────────────────────────────────────────────
 #   1. CryticTester is in-tree (invariants/Properties.sol) ✓
 #   2. echidna.yaml references `contract: CryticTester` ✓
 #   3. CI installs static echidna v2.2.5 binary (native, not Docker) ✓
-#   4. crytic-compile installed via pip (Fix A, 2026-06-19) ✓
-#      → crytic-compile compiled the project successfully in CI
-#   5. Campaign step now FAIL-LOUD (Fix B, 2026-06-19): checks for
-#      echidna_* property result lines; exits 1 if none found ✓
+#   4. crytic-compile installed via pip ✓
+#   5. Campaign step has fail-loud gate (checks echidna_* result lines) ✓
 #
-# ── Blocker (run 27851710417 — genuine new error, not cosmetic green) ────────
-#   MockPrecompiles.sol uses vm.mockCall (Foundry cheatcode selector 0xb96213e4).
-#   Echidna's EVM does NOT support Foundry cheatcodes. CryticTester constructor
-#   calls _setupProperties() → MockPrecompiles.setMark() → vm.mockCall() → FAILS.
-#   echidna error: "Deploying the contract ... failed: error BadCheatCode 0xb96213e4"
+# ── Blocker resolved (2026-06-20) ─────────────────────────────────────────────
+#   MockPrecompiles.sol vm.mockCall → StatefulMockPrecompiles.sol + deployContracts
+#   No Foundry cheatcodes in the echidna-facing code path.
 #
-# ── What this means ──────────────────────────────────────────────────────────
-#   The echidna PR-CI job now turns RED for the right reason (not cosmetic green).
-#   T-CI-echidna is NOT resolved. A new ticket (T-CI-echidna-v2) is required
-#   to either: (a) refactor CryticTester to use non-Foundry mock strategy for
-#   precompile responses, or (b) defer echidna to nightly-only and update the
-#   sentinel to gate=false. Decision queued in ops/decisions.md.
-#
-# Wired (partial): 2026-06-19 (fix/ci-echidna-and-d4d5-twins)
-# Ticket: T-CI-echidna (BLOCKED — see T-CI-echidna-v2 decision)
+# Wired: 2026-06-19; refactored 2026-06-20
+# Tickets: T-CI-echidna (resolved L1), T-CI-echidna-v2-mock-refactor-2026-06-20
