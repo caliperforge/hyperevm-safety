@@ -1,5 +1,7 @@
 # hyperevm-safety (v0.1)
 
+[![ci](https://github.com/caliperforge/hyperevm-safety/actions/workflows/ci.yml/badge.svg)](https://github.com/caliperforge/hyperevm-safety/actions/workflows/ci.yml)
+
 **Status.** v0.1 in-tree. All six differentiated invariants implemented in
 `src/` with paired property tests in `invariants/`. The JELLY (Mar 2025)
 incident reproduction ships as clean + planted twins under
