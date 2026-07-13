@@ -512,3 +512,42 @@ jobs:
             exit 1
           fi
           echo "::notice::D-6 planted leg correctly surfaced INVARIANT VIOLATED and exited non-zero (ec=$ec)."
+
+  # Phase 2 — multi-seed reachability certification (standing merge gate).
+  # Every active planted twin must FAIL its suite with an INVARIANT VIOLATED
+  # marker on ALL 16 canonical seeds in ci/reachability_seeds.txt. Turns the
+  # per-invariant `planted-fires` legs' one-seed catches into a deterministic
+  # N-of-N certification per twin. See docs/reachability.md for the rule.
+  reachability-multi-seed:
+    name: reachability-multi-seed (all active planted twins, 16 seeds each)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: library-build
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Detect any active planted twin
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Any of the gate files existing means the reachability leg has
+          # real work to do. If none exist yet, the leg exits vacuous-green.
+          if [ -f invariants/planted/SzDecimalsRoundTrip.planted.t.sol ] || \
+             [ -f invariants/planted/ChainlinkAdapterDefeats.planted.t.sol ] || \
+             [ -f incidents/01-jelly-2025-03/planted/foundry.toml ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No planted twins landed; reachability-multi-seed deferred."
+          fi
+
+      - name: Foundry setup (pinned)
+        if: steps.gate.outputs.wired == 'true'
+        uses: ./.github/actions/foundry-setup
+
+      - name: Reachability certified across 16 seeds (per twin)
+        if: steps.gate.outputs.wired == 'true'
+        run: ./ci/reachability_leg.sh

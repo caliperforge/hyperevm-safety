@@ -107,6 +107,18 @@ M2/M3 deliverable lands. The composite Foundry setup
 (`6abf28f…`) and a `nightly` Foundry tag; the nightly workflow runs
 the matrix.
 
+Every active planted twin is also certified on a fixed 16-seed set as
+a standing merge gate (`reachability-multi-seed` job). Every seed must
+FAIL the twin with an `INVARIANT VIOLATED` marker; if any seed passes
+on any twin, CI turns red. Verdict from the local run on 2026-07-13:
+
+```
+reachability certified: yes (all active twins, 16/16 failed as required)
+```
+
+Per-twin k / 16 numbers, the seed list, and the merge-gate rule are in
+[`docs/reachability.md`](docs/reachability.md).
+
 ---
 
 ## Repo layout
